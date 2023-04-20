@@ -4,7 +4,7 @@ import win32com.client
 from settings import path_exel, path_exel2, list_year, rate, year_now
 import pandas as pd
 import os
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 
 
 ctx = decimal.Context()
@@ -13,29 +13,61 @@ ctx = decimal.Context()
 def pivot1_1(year):
     wb = load_workbook(path_exel)
     sheet = wb[year]
-    sheet['K1'] = 'Страны'
-    sheet['L1'] = '№_ФО'
-    sheet['M1'] = '№_Региона'
-    sheet['N1'] = 'ФО'
-    sheet['O1'] = 'Регионы'
-    sheet['P1'] = 'Цена_д'
-    sheet['Q1'] = 'Цена_р'
+    wb_2 = Workbook()
+    wb_2.create_sheet('last')
+    sheet_last = wb_2['last']
+    if 'Sheet' in wb_2.sheetnames:
+        wb_2.remove(wb_2['Sheet'])
 
-    wb.save(path_exel)
+    sheet_last['K1'] = 'Страны'
+    sheet_last['L1'] = '№_ФО'
+    sheet_last['M1'] = '№_Региона'
+    sheet_last['N1'] = 'ФО'
+    sheet_last['O1'] = 'Регионы'
+    sheet_last['P1'] = 'Цена_д'
+    sheet_last['Q1'] = 'Цена_р'
+    sheet_last['A1'] = 'NAPR'
+    sheet_last['B1'] = 'PERIOD'
+    sheet_last['C1'] = 'STRANA'
+    sheet_last['D1'] = 'TNVED'
+    sheet_last['E1'] = 'EDIZM'
+    sheet_last['F1'] = 'STOIM'
+    sheet_last['G1'] = 'NETTO'
+    sheet_last['H1'] = 'KOL'
+    sheet_last['I1'] = 'REGION'
+    sheet_last['J1'] = 'REGION_S'
 
-    # количество строк
-    quantity_row = sheet.max_row
+    quantity_row1 = sheet.max_row
 
-    # заменяем запятую на точку и сохраняем на новый лист
-    data_frame = pd.ExcelFile(path_exel)
-    data_frame_last = data_frame.parse(year, decimal=',')
-    with pd.ExcelWriter(path_exel2) as writer:
-        data_frame_last.to_excel(writer, 'last')
-
-    # удаляем столбец
-    wb_2 = openpyxl.load_workbook(path_exel2)
-    sheet_2 = wb_2.active
-    sheet_2.delete_cols(1, 1)
+    for cell_all in range(2, quantity_row1 + 1):
+        cell_1 = sheet[f'A{cell_all}'].value
+        cell_2 = sheet[f'B{cell_all}'].value
+        cell_3 = sheet[f'C{cell_all}'].value
+        cell_4 = sheet[f'D{cell_all}'].value
+        cell_5 = sheet[f'E{cell_all}'].value
+        cell_6 = sheet[f'F{cell_all}'].value
+        if isinstance(cell_6, str):
+            cell_6 = float(cell_6.replace(',', '.'))
+        elif isinstance(cell_6, int):
+            cell_6 = float(cell_6)
+        cell_7 = sheet[f'G{cell_all}'].value
+        if isinstance(cell_7, str):
+            cell_7 = float(cell_7.replace(',', '.'))
+        elif isinstance(cell_7, int):
+            cell_7 = float(cell_7)
+        cell_8 = sheet[f'H{cell_all}'].value
+        cell_9 = sheet[f'I{cell_all}'].value
+        cell_10 = sheet[f'J{cell_all}'].value
+        sheet_last[f'A{cell_all}'].value = cell_1
+        sheet_last[f'B{cell_all}'].value = cell_2
+        sheet_last[f'C{cell_all}'].value = cell_3
+        sheet_last[f'D{cell_all}'].value = cell_4
+        sheet_last[f'E{cell_all}'].value = cell_5
+        sheet_last[f'F{cell_all}'].value = float(cell_6)
+        sheet_last[f'G{cell_all}'].value = float(cell_7)
+        sheet_last[f'H{cell_all}'].value = cell_8
+        sheet_last[f'I{cell_all}'].value = cell_9
+        sheet_last[f'J{cell_all}'].value = cell_10
     wb_2.save(path_exel2)
 
     # вставляем лист со "странами", ФО и регионами
@@ -50,51 +82,48 @@ def pivot1_1(year):
     insert_sheet(path_1, wb_2, path_exel2, 'Prob')
     insert_sheet(path_fo, wb_2, path_exel2, 'FO')
     insert_sheet(path_reg, wb_2, path_exel2, 'Reg')
-
-    # вставляем формулу со "странами"
-    wb_form = load_workbook(path_exel2)
-    sheet_form = wb_form['last']
-    for k in range(2, quantity_row + 1):
-        formula = '=VLOOKUP(C' + str(k) + ',Prob!A:B,2,0)'
-        formula2 = '=F' + str(k) + '/G' + str(k)
-        formula3 = r'=P' + str(k) + '*' + str(rate[year_now])
-
-        sheet_form.cell(row=k, column=11, value=formula)
-        sheet_form.cell(row=k, column=16, value=formula2)
-        sheet_form.cell(row=k, column=17, value=formula3)
-    wb_form.save(path_exel2)
-
-    # вставляем формулу с "номерами федеральных округов"
-    wb_form = load_workbook(path_exel2)
-    sheet_form = wb_form['last']
-    for k in range(2, quantity_row + 1):
-        formula = '=LEFT(J' + str(k) + ',2)'
-        sheet_form.cell(row=k, column=12, value=formula)
-    wb_form.save(path_exel2)
-
-    # вставляем формулу с "номерами регионов"
-    wb_form = load_workbook(path_exel2)
-    sheet_form = wb_form['last']
-    for k in range(2, quantity_row + 1):
-        formula = '=LEFT(I' + str(k) + ',5)'
-        sheet_form.cell(row=k, column=13, value=formula)
-    wb_form.save(path_exel2)
+    wb_2.save(path_exel2)
 
     # вставляем формулу с "именами федеральных округов"
-    wb_form = load_workbook(path_exel2)
-    sheet_form = wb_form['last']
-    for k in range(2, quantity_row + 1):
-        formula = '=VLOOKUP(L' + str(k) + ',FO!A:B,2,0)'
-        sheet_form.cell(row=k, column=14, value=formula)
-    wb_form.save(path_exel2)
+    sheet_form = wb_2['last']
+    quantity_row = sheet_form.max_row
 
-    # вставляем формулу с "именами регионов"
-    wb_form = load_workbook(path_exel2)
-    sheet_form = wb_form['last']
     for k in range(2, quantity_row + 1):
-        formula = '=VLOOKUP(M' + str(k) + ',Reg!A:B,2,0)'
-        sheet_form.cell(row=k, column=15, value=formula)
-    wb_form.save(path_exel2)
+        formula_name_fo = f'=@VLOOKUP(L{k},FO!A:B,2,0)'
+        formula2 = f'=@F{k} / G{k}'
+        kurs = rate[year]
+        formula3 = f'=@P{k}*{kurs}'
+        formula_fo = '=@LEFT(J' + str(k) + ',2)'
+        formula_reg = '=@LEFT(I' + str(k) + ',5)'
+        formula_name_reg = f'=@VLOOKUP(M{k},Reg!A:B,2,0)'
+        formula = f'=@VLOOKUP(C{k},Prob!A:B,2,0)'
+        sheet_form[f'P{k}'].value = formula2
+        sheet_form[f'Q{k}'].value = formula3
+        sheet_form[f'L{k}'].value = formula_fo
+        sheet_form[f'M{k}'].value = formula_reg
+        sheet_form[f'O{k}'].value = formula_name_reg
+        sheet_form[f'K{k}'].value = formula
+        sheet_form[f'N{k}'] = formula_name_fo
+    wb_2.save(path_exel2)
+    wb_2.close()
+
+    excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+    excel_file_path = path_exel2
+
+    excel_file = os.path.join(excel_path, excel_file_path)
+    excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False
+    excel.Workbooks.Open(excel_file)
+    excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+    excel.DisplayAlerts = True
+    excel.ActiveWorkbook.Close()
+
+    data_frame_country1 = pd.read_excel(path_exel2, decimal=",")
+    data_frame_country1['Страны'].fillna('нет данных', inplace=True)
+    data_frame_country1['ФО'].fillna('нет данных', inplace=True)
+    data_frame_country1['Регионы'].fillna('нет данных', inplace=True)
+
+    data_frame_country1.to_excel(path_exel2, sheet_name='last', index=False)
     pass
 
 
@@ -126,7 +155,8 @@ def pivot1_2():
             break
         else:
             bit_depth += 1
-            report_table = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum').round(bit_depth)
+            report_table = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum').\
+                round(bit_depth)
             report_table.to_excel(r'exel\report_2021.xlsx',
                                   sheet_name='Report')
             df = pd.read_excel(r'exel\report_2021.xlsx')
@@ -352,7 +382,8 @@ def pivot2_1():
             break
         else:
             bit_depth += 1
-            report_table = data_frame_country.pivot_table(index='Страны', values='STOIM', aggfunc='sum').round(bit_depth)
+            report_table = data_frame_country.pivot_table(index='Страны', values='STOIM', aggfunc='sum').\
+                round(bit_depth)
             report_table.to_excel(r'exel\report_2021.xlsx',
                                   sheet_name='Report')
             df = pd.read_excel(r'exel\report_2021.xlsx')
@@ -498,7 +529,7 @@ def pivot2_2():
             table_contents_country[2]['Доля'])
     else:
         country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
-        table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
+            table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
 
     return table_contents_country, country_part
 
@@ -764,7 +795,7 @@ def pivotfo(path_save1, fo_reg, netto_stoim):
             table_contents_country[2]['Доля'])
     else:
         country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
-        table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
+            table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
 
     return table_contents_country, country_part, table_contents_country_int
 
