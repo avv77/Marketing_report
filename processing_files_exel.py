@@ -1,7 +1,7 @@
 import sqlite3
 import pandas as pd
 from openpyxl import load_workbook
-from settings import path_base, path_exel
+from settings import path_base, path_exel, production
 
 
 def production_2017():
@@ -84,4 +84,43 @@ def tnved_check():
             print(f'импорт по коду {number_ved} пустой')
 
 
-tnved_check()
+def tnved_number(path, product):
+    wb = load_workbook(path)
+    sheet = wb['tnved']
+    production_tnved_number = product
+    quantity_row = sheet.max_row
+    for i in range(2, quantity_row + 1):
+        value_production_name = str(sheet['A' + str(i)].value)
+        if value_production_name == production_tnved_number:
+            value_tnved_name = str(sheet['C' + str(i)].value)
+            value_tnved_name_mod = value_tnved_name.split(sep=';')
+            len_list_code_name = len(value_tnved_name_mod)
+            if len_list_code_name == 1:
+                name_tnved1_ = value_tnved_name_mod[0]
+                name_tnved2_ = ''
+                name_tnved3_ = ''
+            elif len_list_code_name == 2:
+                name_tnved1_ = value_tnved_name_mod[0]
+                name_tnved2_ = value_tnved_name_mod[1]
+                name_tnved3_ = ''
+            else:
+                name_tnved1_ = value_tnved_name_mod[0]
+                name_tnved2_ = value_tnved_name_mod[1]
+                name_tnved3_ = value_tnved_name_mod[2]
+            value_tnved_code = str(sheet['B' + str(i)].value)
+            value_tnved_code_mod = value_tnved_code.split(sep=';')
+            tnved_1 = value_tnved_code_mod
+            len_list_code = len(value_tnved_code_mod)
+            if len_list_code == 1:
+                tnved1_1 = value_tnved_code_mod[0]
+                tnved2_1 = ''
+                tnved3_1 = ''
+            elif len_list_code == 2:
+                tnved1_1 = value_tnved_code_mod[0]
+                tnved2_1 = value_tnved_code_mod[1]
+                tnved3_1 = ''
+            else:
+                tnved1_1 = value_tnved_code_mod[0]
+                tnved2_1 = value_tnved_code_mod[1]
+                tnved3_1 = value_tnved_code_mod[2]
+            return name_tnved1_, name_tnved2_, name_tnved3_, tnved_1, tnved1_1, tnved2_1, tnved3_1

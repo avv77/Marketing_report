@@ -1,7 +1,7 @@
 import decimal
 import openpyxl
 import win32com.client
-from settings import path_exel, path_exel2, list_year
+from settings import path_exel, path_exel2, list_year, rate, year_now
 import pandas as pd
 import os
 from openpyxl import load_workbook
@@ -18,6 +18,8 @@ def pivot1_1(year):
     sheet['M1'] = '№_Региона'
     sheet['N1'] = 'ФО'
     sheet['O1'] = 'Регионы'
+    sheet['P1'] = 'Цена_д'
+    sheet['Q1'] = 'Цена_р'
 
     wb.save(path_exel)
 
@@ -27,10 +29,8 @@ def pivot1_1(year):
     # заменяем запятую на точку и сохраняем на новый лист
     data_frame = pd.ExcelFile(path_exel)
     data_frame_last = data_frame.parse(year, decimal=',')
-    writer = pd.ExcelWriter(path_exel2)
-    data_frame_last.to_excel(writer, 'last')
-    writer.save()
-    writer.close()
+    with pd.ExcelWriter(path_exel2) as writer:
+        data_frame_last.to_excel(writer, 'last')
 
     # удаляем столбец
     wb_2 = openpyxl.load_workbook(path_exel2)
@@ -56,7 +56,12 @@ def pivot1_1(year):
     sheet_form = wb_form['last']
     for k in range(2, quantity_row + 1):
         formula = '=VLOOKUP(C' + str(k) + ',Prob!A:B,2,0)'
+        formula2 = '=F' + str(k) + '/G' + str(k)
+        formula3 = r'=P' + str(k) + '*' + str(rate[year_now])
+
         sheet_form.cell(row=k, column=11, value=formula)
+        sheet_form.cell(row=k, column=16, value=formula2)
+        sheet_form.cell(row=k, column=17, value=formula3)
     wb_form.save(path_exel2)
 
     # вставляем формулу с "номерами федеральных округов"
@@ -109,8 +114,7 @@ def pivot1_2():
     data_frame_country = pd.read_excel(path_exel2)
 
     report_table = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum').round(0)
-    report_table.to_excel(r'exel\report_2021.xlsx',
-                          sheet_name='Report')
+    report_table.to_excel(r'exel\report_2021.xlsx', sheet_name='Report')
 
     df = pd.read_excel(r'exel\report_2021.xlsx')
     bit_depth = 0
@@ -118,13 +122,16 @@ def pivot1_2():
     exist_count = col_netto_list.count(0)
 
     while exist_count != 0:
-        bit_depth += 1
-        report_table = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum').round(bit_depth)
-        report_table.to_excel(r'exel\report_2021.xlsx',
-                              sheet_name='Report')
-        df = pd.read_excel(r'exel\report_2021.xlsx')
-        col_netto_list = df['NETTO'].tolist()
-        exist_count = col_netto_list.count(0)
+        if bit_depth > 6:
+            break
+        else:
+            bit_depth += 1
+            report_table = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum').round(bit_depth)
+            report_table.to_excel(r'exel\report_2021.xlsx',
+                                  sheet_name='Report')
+            df = pd.read_excel(r'exel\report_2021.xlsx')
+            col_netto_list = df['NETTO'].tolist()
+            exist_count = col_netto_list.count(0)
 
     # сортировка таблицы по нетто
     df_netto = pd.read_excel(r'exel\report_2021.xlsx')
@@ -164,13 +171,19 @@ def pivot1_2():
         netto_value = round(sheet_proportion['B' + str(i_netto)].value)
 
         while netto_value == 0:
-            counter_netto += 1
-            netto_value = round(sheet_proportion['B' + str(i_netto)].value, counter_netto)
+            if counter_netto > 6:
+                break
+            else:
+                counter_netto += 1
+                netto_value = round(sheet_proportion['B' + str(i_netto)].value, counter_netto)
         sheet_proportion['B' + str(i_netto)].value = netto_value
 
         while netto_proportion == 0:
-            counter_country += 1
-            netto_proportion = round(netto_country / itog * 100, counter_country)
+            if counter_country > 6:
+                break
+            else:
+                counter_country += 1
+                netto_proportion = round(netto_country / itog * 100, counter_country)
         sheet_proportion['C' + str(i_netto)].value = netto_proportion
 
     quantity_row = sheet_proportion.max_row
@@ -193,40 +206,45 @@ def pivot1_2():
             proportion_row.append(i_part)
             proportion_netto_value += netto_part_country
 
-    # удаляем строки, доли которых менее 0,01%
-    number = 0
-    for number_row in proportion_row:
-        sheet_proportion_part.delete_rows(number_row - number)
-        number += 1
-    quantity_row = sheet_proportion_part.max_row
+    if proportion_part_value != 0:
+        # удаляем строки, доли которых менее 0,01%
+        number = 0
+        for number_row in proportion_row:
+            sheet_proportion_part.delete_rows(number_row - number)
+            number += 1
+        quantity_row = sheet_proportion_part.max_row
 
-    # вставляем пустую строку и пишем значение "другие"
-    sheet_proportion_part.insert_rows(sheet_proportion_part.max_row, 1)
-    sheet_proportion_part['A' + str(quantity_row)] = 'другие'
+        # вставляем пустую строку и пишем значение "другие"
+        sheet_proportion_part.insert_rows(sheet_proportion_part.max_row, 1)
+        sheet_proportion_part['A' + str(quantity_row)] = 'другие'
 
-    if proportion_netto_value >= 1:
-        proportion_netto_value = round(proportion_netto_value, 0)
-        sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
-    else:
-        proportion_netto_value = round(proportion_netto_value, 0)
-        number4 = 0
-        while proportion_netto_value == 0:
-            number4 += 1
-            proportion_netto_value = round(proportion_netto_value, number4)
-        sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
+        if proportion_netto_value >= 1:
+            proportion_netto_value = round(proportion_netto_value, 0)
+            sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
+        elif proportion_netto_value == 0:
+            pass
+        else:
+            proportion_netto_value_ = round(proportion_netto_value, 0)
+            number4 = 0
+            while proportion_netto_value_ == 0:
+                number4 += 1
+                proportion_netto_value_ = round(proportion_netto_value, number4)
 
-    precision = 6
-    proportion_part_value = f'{proportion_part_value:.{precision}f}'
+            proportion_netto_value = proportion_netto_value_
+            sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
 
-    list_number = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-    index_list = []
-    for number in list_number:
-        if number in proportion_part_value:
-            index = proportion_part_value.find(number)
-            index_list.append(index)
-    min_index_list = min(index_list)
-    proportion_part_value = proportion_part_value[0:min_index_list + 1]
-    sheet_proportion_part['C' + str(quantity_row)] = proportion_part_value
+        precision = 6
+        proportion_part_value = f'{proportion_part_value:.{precision}f}'
+
+        list_number = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+        index_list = []
+        for number in list_number:
+            if number in proportion_part_value:
+                index = proportion_part_value.find(number)
+                index_list.append(index)
+        min_index_list = min(index_list)
+        proportion_part_value = proportion_part_value[0:min_index_list + 1]
+        sheet_proportion_part['C' + str(quantity_row)] = proportion_part_value
 
     wb_proportion_part.save(r'exel\report_2021.xlsx')
     pass
@@ -252,10 +270,29 @@ def pivot1_3():
             'Доля': sheet_1.cell(i, 3).value
         })
     # сумма долей 4-х крупнейших стран
-    country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
-        table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
+    country_part = 0
+    len_table_contents_country = len(table_contents_country)
+    if len(table_contents_country) == 2:
+        country_part = float(table_contents_country[0]['Доля'])
+        # table_contents_country.append({'Страны': 'нет данных', 'NETTO': 0, 'Доля': 0})
+        # table_contents_country.append({'Страны': 'нет данных', 'NETTO': 0, 'Доля': 0})
+        # table_contents_country.append({'Страны': 'нет данных', 'NETTO': 0, 'Доля': 0})
 
-    return table_contents_country, country_part, table_contents_country_int
+    elif len(table_contents_country) == 3:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля'])
+        # table_contents_country.append({'Страны': 'нет данных', 'NETTO': 0, 'Доля': 0})
+        # table_contents_country.append({'Страны': 'нет данных', 'NETTO': 0, 'Доля': 0})
+
+    elif len(table_contents_country) == 4:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+            table_contents_country[2]['Доля'])
+        # table_contents_country.append({'Страны': 'нет данных', 'NETTO': 0, 'Доля': 0})
+
+    else:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+            table_contents_country[2]['Доля']) + float(table_contents_country[3]['Доля'])
+
+    return table_contents_country, country_part, table_contents_country_int, len_table_contents_country
 
 
 # вставить пробелы между разрадами в длинных числах (123456 = 123 456)
@@ -311,13 +348,16 @@ def pivot2_1():
     exist_count = col_netto_list.count(0)
 
     while exist_count != 0:
-        bit_depth += 1
-        report_table = data_frame_country.pivot_table(index='Страны', values='STOIM', aggfunc='sum').round(bit_depth)
-        report_table.to_excel(r'exel\report_2021.xlsx',
-                              sheet_name='Report')
-        df = pd.read_excel(r'exel\report_2021.xlsx')
-        col_netto_list = df['STOIM'].tolist()
-        exist_count = col_netto_list.count(0)
+        if bit_depth > 6:
+            break
+        else:
+            bit_depth += 1
+            report_table = data_frame_country.pivot_table(index='Страны', values='STOIM', aggfunc='sum').round(bit_depth)
+            report_table.to_excel(r'exel\report_2021.xlsx',
+                                  sheet_name='Report')
+            df = pd.read_excel(r'exel\report_2021.xlsx')
+            col_netto_list = df['STOIM'].tolist()
+            exist_count = col_netto_list.count(0)
 
     # сортировка таблицы по стоимости
     df_netto = pd.read_excel(r'exel\report_2021.xlsx')
@@ -357,13 +397,19 @@ def pivot2_1():
         netto_value = round(sheet_proportion['B' + str(i_netto)].value)
 
         while netto_value == 0:
-            counter_netto += 1
-            netto_value = round(sheet_proportion['B' + str(i_netto)].value, counter_netto)
+            if counter_netto > 6:
+                break
+            else:
+                counter_netto += 1
+                netto_value = round(sheet_proportion['B' + str(i_netto)].value, counter_netto)
         sheet_proportion['B' + str(i_netto)].value = netto_value
 
         while netto_proportion == 0:
-            counter_country += 1
-            netto_proportion = round(netto_country / itog * 100, counter_country)
+            if counter_country > 6:
+                break
+            else:
+                counter_country += 1
+                netto_proportion = round(netto_country / itog * 100, counter_country)
         sheet_proportion['C' + str(i_netto)].value = netto_proportion
 
     quantity_row = sheet_proportion.max_row
@@ -386,40 +432,44 @@ def pivot2_1():
             proportion_row.append(i_part)
             proportion_netto_value += netto_part_country
 
-    # удаляем строки, доли которых менее 0,01%
-    number = 0
-    for number_row in proportion_row:
-        sheet_proportion_part.delete_rows(number_row - number)
-        number += 1
-    quantity_row = sheet_proportion_part.max_row
+    if proportion_netto_value != 0:
+        # удаляем строки, доли которых менее 0,01%
+        number = 0
+        for number_row in proportion_row:
+            sheet_proportion_part.delete_rows(number_row - number)
+            number += 1
+        quantity_row = sheet_proportion_part.max_row
 
-    # вставляем пустую строку и пишем значение "другие"
-    sheet_proportion_part.insert_rows(sheet_proportion_part.max_row, 1)
-    sheet_proportion_part['A' + str(quantity_row)] = 'другие'
+        # вставляем пустую строку и пишем значение "другие"
+        sheet_proportion_part.insert_rows(sheet_proportion_part.max_row, 1)
+        sheet_proportion_part['A' + str(quantity_row)] = 'другие'
 
-    if proportion_netto_value >= 1:
-        proportion_netto_value = round(proportion_netto_value, 0)
-        sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
-    else:
-        proportion_netto_value = round(proportion_netto_value, 0)
-        number4 = 0
-        while proportion_netto_value == 0:
-            number4 += 1
-            proportion_netto_value = round(proportion_netto_value, number4)
-        sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
+        if proportion_netto_value >= 1:
+            proportion_netto_value = round(proportion_netto_value, 0)
+            sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
+        else:
+            proportion_netto_value = round(proportion_netto_value, 0)
+            number4 = 0
+            while proportion_netto_value == 0:
+                if number4 > 6:
+                    break
+                else:
+                    number4 += 1
+                    proportion_netto_value = round(proportion_netto_value, number4)
+            sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
 
-    precision = 6
-    proportion_part_value = f'{proportion_part_value:.{precision}f}'
+        precision = 6
+        proportion_part_value = f'{proportion_part_value:.{precision}f}'
 
-    list_number = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-    index_list = []
-    for number in list_number:
-        if number in proportion_part_value:
-            index = proportion_part_value.find(number)
-            index_list.append(index)
-    min_index_list = min(index_list)
-    proportion_part_value = proportion_part_value[0:min_index_list + 1]
-    sheet_proportion_part['C' + str(quantity_row)] = proportion_part_value
+        list_number = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+        index_list = []
+        for number in list_number:
+            if number in proportion_part_value:
+                index = proportion_part_value.find(number)
+                index_list.append(index)
+        min_index_list = min(index_list)
+        proportion_part_value = proportion_part_value[0:min_index_list + 1]
+        sheet_proportion_part['C' + str(quantity_row)] = proportion_part_value
 
     wb_proportion_part.save(r'exel\report_2021.xlsx')
     pass
@@ -439,33 +489,66 @@ def pivot2_2():
             'Доля': sheet_1.cell(i, 3).value
         })
     # сумма долей 4-х крупнейших стран
-    country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+    if len(table_contents_country) == 2:
+        country_part = float(table_contents_country[0]['Доля'])
+    elif len(table_contents_country) == 3:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля'])
+    elif len(table_contents_country) == 4:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+            table_contents_country[2]['Доля'])
+    else:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
         table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
+
     return table_contents_country, country_part
 
 
 def pivot_table_country_year():
     pivot1_1('2013')
-    pivot1_2()
-    df = pd.read_excel(r'exel\report_2021.xlsx')
-    df.pop('Доля')
-    df.drop(labels=[len(df) - 1], axis=0, inplace=True)
-    df.loc[:, "Год"] = "2013"
-    df.to_excel(r'exel\report_2021_all.xlsx', index=False)
-
-    for year in range(1, len(list_year)):
-        pivot1_1(list_year[year])
+    try:
         pivot1_2()
         df = pd.read_excel(r'exel\report_2021.xlsx')
         df.pop('Доля')
         df.drop(labels=[len(df) - 1], axis=0, inplace=True)
-        df.loc[:, "Год"] = list_year[year]
-        wb_report = load_workbook(r'exel\report_2021_all.xlsx')
-        sheet = wb_report.active
-        row_end = sheet.max_row
-        writer = pd.ExcelWriter(r'exel\report_2021_all.xlsx', mode='a', if_sheet_exists='overlay')
-        df.to_excel(writer, startrow=row_end, index=False, header=False)
-        writer.save()
+        df.loc[:, "Год"] = "2013"
+        df.to_excel(r'exel\report_2021_all.xlsx', index=False)
+    except Exception:
+        print('Пропуск 2013 г. в pivot_table_country_year')
+        df5 = pd.DataFrame()
+        df5.to_excel(r'exel\report_2021_all.xlsx', index=False)
+
+    for year in range(1, len(list_year)):
+        wb_report_now = load_workbook(r'exel\report_2021_all.xlsx')
+        sheet_now = wb_report_now.active
+        row_end_now = sheet_now.max_row
+        if row_end_now > 1:
+            pivot1_1(list_year[year])
+            try:
+                pivot1_2()
+                df = pd.read_excel(r'exel\report_2021.xlsx')
+                df.pop('Доля')
+                df.drop(labels=[len(df) - 1], axis=0, inplace=True)
+                df.loc[:, "Год"] = list_year[year]
+                wb_report = load_workbook(r'exel\report_2021_all.xlsx')
+                sheet = wb_report.active
+                row_end = sheet.max_row
+                with pd.ExcelWriter(r'exel\report_2021_all.xlsx', mode='a', if_sheet_exists='overlay') as writer:
+                    df.to_excel(writer, startrow=row_end, index=False, header=False)
+
+            except Exception:
+                print(f'Пропуск {list_year[year]} г. в pivot_table_country_year')
+        else:
+            pivot1_1(list_year[year])
+            try:
+                pivot1_2()
+                df = pd.read_excel(r'exel\report_2021.xlsx')
+                df.pop('Доля')
+                df.drop(labels=[len(df) - 1], axis=0, inplace=True)
+                df.loc[:, "Год"] = list_year[year]
+                df.to_excel(r'exel\report_2021_all.xlsx', index=False)
+
+            except Exception:
+                print(f'Пропуск {list_year[year]} г. в pivot_table_country_year')
 
     data_frame_country = pd.read_excel(r'exel\report_2021_all.xlsx')
     report_table = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum', columns='Год',
@@ -527,12 +610,16 @@ def pivot_fo_1(fo_reg, netto_stoim, path_save):
     exist_count = col_netto_list.count(0)
 
     while exist_count != 0:
-        bit_depth += 1
-        report_table = data_frame_country.pivot_table(index=fo_reg, values=netto_stoim, aggfunc='sum').round(bit_depth)
-        report_table.to_excel(path_save, sheet_name='Report')
-        df = pd.read_excel(path_save)
-        col_netto_list = df[netto_stoim].tolist()
-        exist_count = col_netto_list.count(0)
+        if bit_depth > 6:
+            break
+        else:
+            bit_depth += 1
+            report_table = data_frame_country.pivot_table(index=fo_reg, values=netto_stoim, aggfunc='sum').\
+                round(bit_depth)
+            report_table.to_excel(path_save, sheet_name='Report')
+            df = pd.read_excel(path_save)
+            col_netto_list = df[netto_stoim].tolist()
+            exist_count = col_netto_list.count(0)
 
     # сортировка таблицы по весу
     df_netto = pd.read_excel(path_save)
@@ -571,13 +658,19 @@ def pivot_fo_1(fo_reg, netto_stoim, path_save):
         netto_value = round(sheet_proportion['B' + str(i_netto)].value)
 
         while netto_value == 0:
-            counter_netto += 1
-            netto_value = round(sheet_proportion['B' + str(i_netto)].value, counter_netto)
+            if counter_netto > 6:
+                break
+            else:
+                counter_netto += 1
+                netto_value = round(sheet_proportion['B' + str(i_netto)].value, counter_netto)
         sheet_proportion['B' + str(i_netto)].value = netto_value
 
         while netto_proportion == 0:
-            counter_country += 1
-            netto_proportion = round(netto_country / itog * 100, counter_country)
+            if counter_country > 6:
+                break
+            else:
+                counter_country += 1
+                netto_proportion = round(netto_country / itog * 100, counter_country)
         sheet_proportion['C' + str(i_netto)].value = netto_proportion
 
     quantity_row = sheet_proportion.max_row
@@ -619,8 +712,11 @@ def pivot_fo_1(fo_reg, netto_stoim, path_save):
             proportion_netto_value = round(proportion_netto_value, 0)
             number4 = 0
             while proportion_netto_value == 0:
-                number4 += 1
-                proportion_netto_value = round(proportion_netto_value, number4)
+                if number4 > 6:
+                    break
+                else:
+                    number4 += 1
+                    proportion_netto_value = round(proportion_netto_value, number4)
             sheet_proportion_part['B' + str(quantity_row)] = proportion_netto_value
 
         precision = 6
@@ -659,7 +755,15 @@ def pivotfo(path_save1, fo_reg, netto_stoim):
             'Доля': sheet_1.cell(i, 3).value
         })
     # сумма долей 4-х крупнейших ФО
-    country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+    if len(table_contents_country) == 2:
+        country_part = float(table_contents_country[0]['Доля'])
+    elif len(table_contents_country) == 3:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля'])
+    elif len(table_contents_country) == 4:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+            table_contents_country[2]['Доля'])
+    else:
+        country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
         table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
 
     return table_contents_country, country_part, table_contents_country_int
@@ -694,3 +798,224 @@ def pivot_table_fo_reg(path_fo_reg, pivot_index, pivot_values, pivot_1_column, p
         table_contents_country.append(table_year_dict)
 
     return table_contents_country
+
+
+# сводная таблица по странам и стоимости
+def pivot_country_cost():
+    table_contents_country = []
+    table_contents_country_int = []
+    workbook = load_workbook(r'exel\report_2021.xlsx')
+    sheet_1 = workbook['Report']
+    for i in range(2, sheet_1.max_row + 1):
+        table_contents_country_int.append({
+            'Страны': sheet_1.cell(i, 1).value,
+            'NETTO': sheet_1.cell(i, 2).value,
+            'Доля': sheet_1.cell(i, 3).value
+        })
+        d = decimal.Decimal(sheet_1.cell(i, 2).value)
+        d = moneyfmt(d, sep=' ')
+        table_contents_country.append({
+            'Страны': sheet_1.cell(i, 1).value,
+            'NETTO': d,
+            'Доля': sheet_1.cell(i, 3).value
+        })
+    # сумма долей 4-х крупнейших стран
+    country_part = float(table_contents_country[0]['Доля']) + float(table_contents_country[1]['Доля']) + float(
+        table_contents_country[2]['Доля'] + float(table_contents_country[3]['Доля']))
+
+    return table_contents_country, country_part, table_contents_country_int
+
+
+def pivot_country_cost_excel():
+    # вычисляем сводную таблицу по стоимости в долларах за последний год по странам
+    excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+    excel_file_path = path_exel2
+
+    excel_file = os.path.join(excel_path, excel_file_path)
+    excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False
+    excel.Workbooks.Open(excel_file)
+    excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+    excel.DisplayAlerts = True
+    excel.ActiveWorkbook.Close()
+
+    data_frame_country = pd.read_excel(path_exel2)
+
+    report_table_country_netto = data_frame_country.pivot_table(index='Страны', values='NETTO', aggfunc='sum').round(0)
+
+    wb2 = openpyxl.Workbook()
+    wb2.save(filename=r'exel\report_2021_dol.xlsx')
+
+    with pd.ExcelWriter(r'exel\report_2021_dol.xlsx', mode='a', if_sheet_exists='overlay') as writer:
+        report_table_country_netto.to_excel(writer, sheet_name='Report1')
+
+    report_table_country_stoim = data_frame_country.pivot_table(index='Страны', values='STOIM', aggfunc='sum').round(0)
+
+    with pd.ExcelWriter(r'exel\report_2021_dol.xlsx', mode='a', if_sheet_exists='overlay') as writer2:
+        report_table_country_stoim.to_excel(writer2, sheet_name='Report2')
+
+    wb5 = load_workbook(r'exel\report_2021_dol.xlsx')
+    sheet = wb5['Report1']
+    sheet['C1'] = 'Стоимость'
+    sheet['D1'] = 'Цена'
+    sheet2 = wb5['Report2']
+    quantity_row = sheet.max_row
+    for k in range(2, quantity_row + 1):
+        formula = sheet2['B' + str(k)].value
+        formula2 = '=C' + str(k) + '/B' + str(k)
+        sheet.cell(row=k, column=3, value=formula)
+        sheet.cell(row=k, column=4, value=formula2)
+    wb5.save(filename=r'exel\report_2021_dol.xlsx')
+    wb5.close()
+    pass
+
+
+def pivot_country_cost_word():
+    # вставляем сводную таблицу по стоимости в долларах за последний год по странам
+    excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+    excel_file_path = r'D:\PyCharmProject\Marketing_report\exel\report_2021_dol.xlsx'
+
+    excel_file = os.path.join(excel_path, excel_file_path)
+    excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False
+    excel.Workbooks.Open(excel_file)
+    excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+    excel.DisplayAlerts = True
+    excel.ActiveWorkbook.Close()
+
+    table_contents_country_int = []
+    data_frame_country = pd.read_excel(excel_file_path, sheet_name='Report1')
+    number_row = len(data_frame_country)
+    for i in range(0, number_row):
+        if data_frame_country['Цена'][i] != '#ДЕЛ/0!':
+            table_contents_country_int.append({
+                'Страны': data_frame_country['Страны'][i],
+                'Стоимость': round(data_frame_country['Цена'][i], 2)
+            })
+        else:
+            table_contents_country_int.append({
+                'Страны': data_frame_country['Страны'][i],
+                'Стоимость': 'нет данных'
+            })
+    return table_contents_country_int
+
+
+def pivot_table_country_dol():
+    pivot1_1('2013')
+    pivot_country_cost_excel()
+
+    excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+    excel_file_path = r'D:\PyCharmProject\Marketing_report\exel\report_2021_dol.xlsx'
+
+    excel_file = os.path.join(excel_path, excel_file_path)
+    excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False
+    excel.Workbooks.Open(excel_file)
+    excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+    excel.DisplayAlerts = True
+    excel.ActiveWorkbook.Close()
+
+    df = pd.read_excel(r'exel\report_2021_dol.xlsx', sheet_name='Report1')
+    name_colums1 = df.columns.values.tolist()
+    if 'NETTO' in name_colums1:
+        df.pop('NETTO')
+        df.pop('Стоимость')
+        df.loc[:, "Год"] = "2013"
+        df.to_excel(r'exel\report_2021_dol2.xlsx', index=False)
+    for year in range(1, len(list_year)):
+        pivot1_1(list_year[year])
+        pivot_country_cost_excel()
+
+        excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+        excel_file_path = r'D:\PyCharmProject\Marketing_report\exel\report_2021_dol.xlsx'
+
+        excel_file = os.path.join(excel_path, excel_file_path)
+        excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+        excel.DisplayAlerts = False
+        excel.Workbooks.Open(excel_file)
+        excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+        excel.DisplayAlerts = True
+        excel.ActiveWorkbook.Close()
+
+        df = pd.read_excel(r'exel\report_2021_dol.xlsx', sheet_name='Report1')
+        name_colums = df.columns.values.tolist()
+        if 'NETTO' in name_colums:
+            df.pop('NETTO')
+            df.pop('Стоимость')
+            df.loc[:, "Год"] = list_year[year]
+            wb_report = load_workbook(r'exel\report_2021_dol2.xlsx')
+            sheet = wb_report.active
+            row_end = sheet.max_row
+            with pd.ExcelWriter(r'exel\report_2021_dol2.xlsx', mode='a', if_sheet_exists='overlay') as writer:
+                df.to_excel(writer, startrow=row_end, index=False, header=False)
+        else:
+            pass
+
+    data_frame_country = pd.read_excel(r'exel\report_2021_dol2.xlsx')
+    report_table = data_frame_country.pivot_table(index='Страны', values='Цена', aggfunc='mean', columns='Год',
+                                                  margins=True).round(2)
+    report_table.to_excel(r'exel\report_2021_dol3.xlsx', sheet_name='Report')
+
+    table_contents_country = []
+    workbook = load_workbook(r'exel\report_2021_dol3.xlsx')
+    sheet_1 = workbook['Report']
+    for i in range(2, sheet_1.max_row + 1):
+        table_year_dict = dict()
+        table_year_dict['Страны'] = sheet_1.cell(i, 1).value
+        for j in range(2, sheet_1.max_column + 1):
+            d = sheet_1.cell(i, j).value
+            if d is not None:
+                table_year_dict[sheet_1.cell(1, j).value] = d
+        table_contents_country.append(table_year_dict)
+    return table_contents_country
+
+
+def pivot_country_cost_rub():
+    # вычисляем сводную таблицу по стоимости в длолларах за последний год по странам
+    excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+    excel_file_path = r'D:\PyCharmProject\Marketing_report\exel\report_2021_dol.xlsx'
+
+    excel_file = os.path.join(excel_path, excel_file_path)
+    excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False
+    excel.Workbooks.Open(excel_file)
+    excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+    excel.DisplayAlerts = True
+    excel.ActiveWorkbook.Close()
+
+    wb = load_workbook(r'exel\report_2021_dol.xlsx')
+    sheet = wb['Report1']
+    sheet['E1'] = 'Цена_руб'
+    quantity_row = sheet.max_row
+    for k in range(2, quantity_row + 1):
+        formula2 = '=D' + str(k) + '*' + str(rate[year_now])
+        sheet.cell(row=k, column=5, value=formula2)
+    wb.save(r'exel\report_2021_dol.xlsx')
+    wb.close()
+
+    excel_path = r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+    excel_file_path = r'D:\PyCharmProject\Marketing_report\exel\report_2021_dol.xlsx'
+
+    excel_file = os.path.join(excel_path, excel_file_path)
+    excel = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False
+    excel.Workbooks.Open(excel_file)
+    excel.ActiveWorkbook.SaveAs(excel_file, FileFormat=51, ConflictResolution=2)
+    excel.DisplayAlerts = True
+    excel.ActiveWorkbook.Close()
+
+    table_contents_country_int = []
+    data_frame_country = pd.read_excel(excel_file_path, sheet_name='Report1')
+    number_row = len(data_frame_country)
+    for i in range(0, number_row):
+        if data_frame_country['Цена_руб'][i] != '#ДЕЛ/0!':
+            table_contents_country_int.append({
+                'Страны': data_frame_country['Страны'][i],
+                'Стоимость': round(data_frame_country['Цена_руб'][i], 2)
+            })
+        else:
+            table_contents_country_int.append({
+                'Страны': data_frame_country['Страны'][i],
+                'Стоимость': 'нет данных'
+            })
+    return table_contents_country_int
